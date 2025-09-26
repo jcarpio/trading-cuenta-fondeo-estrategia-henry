@@ -40,7 +40,7 @@ La estrategia se basa en la teoría de **ondas senoidales desplazadas** represen
 ## 📊 Resultados del Backtesting (5 minutos)
 
 ### Overview - Rendimiento General
-![Gráfico de Overview](https://i.imgur.com/overview.png)
+![Gráfico de Overview](overview.png)
 
 **Métricas Destacadas:**
 - **Total P&L**: +$172,628.55 USD (**+17.25%**)
@@ -60,7 +60,7 @@ La curva azul muestra el rendimiento de la estrategia desde mayo 2017 hasta sept
 La línea verde (buy & hold) muestra rendimiento del 120.71%, mientras que la estrategia activa logra un crecimiento superior del 17.25% anualizado.
 
 ### Performance - Métricas Detalladas
-![Gráfico de Performance](https://i.imgur.com/performance.png)
+![Gráfico de Performance](performance.png)
 
 **Breakdown por Tipo de Operación:**
 
@@ -82,8 +82,8 @@ La línea verde (buy & hold) muestra rendimiento del 120.71%, mientras que la es
 - **Max Contracts Held**: 54 (apalancamiento controlado)
 
 ### Trades Analysis - Análisis de Operaciones
-![Gráfico de Trades Analysis 1](https://i.imgur.com/trades1.png)
-![Gráfico de Trades Analysis 2](https://i.imgur.com/trades2.png)
+![Gráfico de Trades Analysis 1](trades1.png)
+![Gráfico de Trades Analysis 2](trades2.png)
 
 **Distribución de Operaciones:**
 - **Total**: 11,186 trades (alta frecuencia)
@@ -108,7 +108,7 @@ La línea verde (buy & hold) muestra rendimiento del 120.71%, mientras que la es
 - **Largest Win**: $39,989.40 USD vs **Largest Loss**: $13,893.30 USD
 
 ### Risk/Performance Ratios - Ratios de Riesgo
-![Gráfico de Risk Performance](https://i.imgur.com/risk.png)
+![Gráfico de Risk Performance](risk.png)
 
 **Ratios de Rendimiento Ajustado al Riesgo:**
 - **Sharpe Ratio**: 0.001 - Indica alta volatilidad relativa al retorno libre de riesgo
