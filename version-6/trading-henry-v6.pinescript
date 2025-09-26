@@ -1,0 +1,256 @@
+//@version=5
+strategy("Henry Estrategia Trading v6", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// === PARÁMETROS DE ENTRADA ===
+lookback_candles = input.int(6, title="Número de velas a comparar", minval=1, maxval=20)
+body_multiplier = input.float(1.5, title="Multiplicador del cuerpo (1.5 = 50% más grande)", minval=1.1, maxval=5.0, step=0.1)
+
+// Parámetros para expansión SMA
+sma20_length = input.int(20, title="Periodo SMA 20", minval=5, maxval=50)
+sma200_length = input.int(200, title="Periodo SMA 200", minval=50, maxval=500)
+sma_source = input.source(close, title="Fuente para SMAs (close, hlc3, ohlc4, etc.)")
+
+// Nuevos parámetros para detección de ciclos
+lookback_cycles = input.int(2, title="Ciclos a analizar para comparar", minval=1, maxval=5)
+expansion_threshold_percent = input.float(80.0, title="% del pico anterior para activar (80%)", minval=50.0, maxval=100.0, step=5.0)
+min_cycle_length = input.int(20, title="Longitud mínima de ciclo", minval=10, maxval=100)
+
+sma20_flatness_threshold = input.float(0.3, title="Umbral de planitud SMA20 (%)", minval=0.1, maxval=2.0, step=0.1)
+
+// === NUEVOS PARÁMETROS PARA ESTRATEGIA ===
+use_trailing_stop = input.bool(true, title="Usar Trailing Stop", group="Gestión de Riesgo")
+risk_reward_ratio = input.float(2.0, title="Ratio Riesgo/Beneficio para Take Profit", minval=1.0, maxval=5.0, step=0.1, group="Gestión de Riesgo")
+
+// === CÁLCULO DEL TAMAÑO DEL CUERPO ===
+current_body_size = math.abs(close - open)
+
+// === CÁLCULO DE SMAs Y EXPANSIÓN AVANZADA ===
+sma20 = ta.sma(sma_source, sma20_length)
+sma200 = ta.sma(sma_source, sma200_length)
+
+// Distancia entre SMAs
+sma_distance = math.abs(sma20 - sma200)
+current_price = close
+
+// === DETECCIÓN DE CRUCES Y CICLOS ===
+sma_cross_up = ta.crossover(sma20, sma200)
+sma_cross_down = ta.crossunder(sma20, sma200)
+any_cross = sma_cross_up or sma_cross_down
+
+// Variables para almacenar información del último ciclo
+var float last_cycle_max_distance = na
+var int last_cycle_length = na
+var int bars_since_last_cross = 0
+
+// Actualizar contador de barras desde último cruce
+if any_cross
+    if not na(last_cycle_max_distance) and bars_since_last_cross >= min_cycle_length
+        last_cycle_length := bars_since_last_cross
+    last_cycle_max_distance := sma_distance
+    bars_since_last_cross := 0
+else
+    bars_since_last_cross += 1
+    if sma_distance > last_cycle_max_distance or na(last_cycle_max_distance)
+        last_cycle_max_distance := sma_distance
+
+// === LÓGICA DE EXPANSIÓN BASADA EN CICLOS ===
+cycle_based_expansion = false
+
+if not na(last_cycle_max_distance) and not na(last_cycle_length) and bars_since_last_cross > min_cycle_length/2
+    distance_ratio = (sma_distance / last_cycle_max_distance) * 100
+    cycle_based_expansion := distance_ratio >= expansion_threshold_percent
+
+// Verificar si SMA20 está "plana"
+sma20_change = sma20 - sma20[5]
+sma20_slope_percent = math.abs(sma20_change / sma20) * 100
+is_sma20_flat = sma20_slope_percent <= sma20_flatness_threshold
+
+// Condición de expansión completa
+expansion_condition = cycle_based_expansion and is_sma20_flat
+
+// === COMPARACIÓN CON VELAS ANTERIORES ===
+is_giant_candle = true
+
+for i = 1 to lookback_candles
+    previous_body_size = math.abs(close[i] - open[i])
+    if current_body_size <= previous_body_size * body_multiplier
+        is_giant_candle := false
+        break
+
+// === IDENTIFICACIÓN DE TIPOS DE VELA ===
+body_size = math.abs(close - open)
+upper_shadow = high - math.max(close, open)
+lower_shadow = math.min(close, open) - low
+total_range = high - low
+
+is_bullish = close > open
+is_bearish = close < open
+
+// Clasificación del tipo de vela
+is_torpedo = body_size > (total_range * 0.7)
+is_hammer = lower_shadow > (body_size * 2) and upper_shadow < (body_size * 0.5) and is_bullish
+is_inverted_hammer = upper_shadow > (body_size * 2) and lower_shadow < (body_size * 0.5) and is_bearish
+
+// === SEÑALES DE TRADING ===
+giant_candle_detected = is_giant_candle and current_body_size > 0
+signal_detected = giant_candle_detected and expansion_condition
+
+// Determinar dirección de la señal
+price_above_sma200 = close > sma200
+price_below_sma200 = close < sma200
+
+// Señales de compra y venta
+buy_signal = signal_detected and price_below_sma200  // Precio debajo de SMA200 = Compra
+sell_signal = signal_detected and price_above_sma200 // Precio encima de SMA200 = Venta
+
+// === GESTIÓN DE RIESGO ===
+// Variables para tracking de trades
+var float entry_price = na
+var float stop_loss = na
+var float take_profit = na
+var float initial_stop_distance = na
+
+// Función para calcular stop loss
+calculate_stop_loss(is_long_trade) =>
+    if is_long_trade
+        // Para compra: stop loss debajo del mínimo de la vela gigante
+        math.min(low, open)
+    else
+        // Para venta: stop loss encima del máximo de la vela gigante
+        math.max(high, open)
+
+// === LÓGICA DE ENTRADA ===
+if buy_signal and strategy.position_size == 0
+    entry_price := close
+    stop_loss := calculate_stop_loss(true)
+    initial_stop_distance := entry_price - stop_loss
+    take_profit := entry_price + (initial_stop_distance * risk_reward_ratio)
+    
+    strategy.entry("Long", strategy.long)
+    
+    if not use_trailing_stop
+        strategy.exit("Exit Long", "Long", stop=stop_loss, limit=take_profit)
+
+if sell_signal and strategy.position_size == 0
+    entry_price := close
+    stop_loss := calculate_stop_loss(false)
+    initial_stop_distance := stop_loss - entry_price
+    take_profit := entry_price - (initial_stop_distance * risk_reward_ratio)
+    
+    strategy.entry("Short", strategy.short)
+    
+    if not use_trailing_stop
+        strategy.exit("Exit Short", "Short", stop=stop_loss, limit=take_profit)
+
+// === TRAILING STOP LOGIC ===
+if use_trailing_stop and strategy.position_size != 0
+    if strategy.position_size > 0  // Posición larga
+        new_stop = close - initial_stop_distance
+        if na(stop_loss) or new_stop > stop_loss
+            stop_loss := new_stop
+        strategy.exit("Exit Long Trailing", "Long", stop=stop_loss, limit=take_profit)
+        
+    else  // Posición corta
+        new_stop = close + initial_stop_distance
+        if na(stop_loss) or new_stop < stop_loss
+            stop_loss := new_stop
+        strategy.exit("Exit Short Trailing", "Short", stop=stop_loss, limit=take_profit)
+
+// === VISUALIZACIÓN ===
+// Dibujar las SMAs
+plot(sma20, color=color.blue, linewidth=2, title="SMA 20")
+plot(sma200, color=color.red, linewidth=2, title="SMA 200")
+
+// Marcar cruces de SMAs
+plotshape(sma_cross_up, style=shape.triangleup, location=location.belowbar, 
+          color=color.green, size=size.small, title="Cruce Alcista SMAs")
+plotshape(sma_cross_down, style=shape.triangledown, location=location.abovebar, 
+          color=color.red, size=size.small, title="Cruce Bajista SMAs")
+
+// Colorear el fondo cuando hay expansión
+bgcolor(cycle_based_expansion ? color.new(color.yellow, 85) : na, title="Zona de Expansión")
+bgcolor(expansion_condition ? color.new(color.green, 90) : na, title="Expansión + SMA Plana")
+
+// Marcar señales de trading
+plotshape(buy_signal, style=shape.triangleup, location=location.belowbar, 
+          color=color.lime, size=size.large, title="🚀 SEÑAL COMPRA")
+plotshape(sell_signal, style=shape.triangledown, location=location.abovebar, 
+          color=color.red, size=size.large, title="🔻 SEÑAL VENTA")
+
+// Dibujar niveles de stop loss y take profit
+plot(strategy.position_size != 0 ? stop_loss : na, color=color.red, linewidth=2, title="Stop Loss", style=plot.style_linebr)
+plot(strategy.position_size != 0 ? take_profit : na, color=color.green, linewidth=2, title="Take Profit", style=plot.style_linebr)
+
+// === INFORMACIÓN EN TIEMPO REAL ===
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 12, bgcolor=color.white, border_width=1)
+    
+    // Header con estado de la estrategia
+    position_text = strategy.position_size > 0 ? "LONG ACTIVO" : strategy.position_size < 0 ? "SHORT ACTIVO" : "SIN POSICIÓN"
+    header_color = strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray
+    
+    table.cell(info_table, 0, 0, "Estado:", text_color=color.white, bgcolor=header_color, text_size=size.normal)
+    table.cell(info_table, 1, 0, position_text, text_color=color.white, bgcolor=header_color, text_size=size.normal)
+    
+    // Información de señales
+    if buy_signal
+        table.cell(info_table, 0, 1, "🚀 SEÑAL COMPRA", text_color=color.white, bgcolor=color.lime, text_size=size.normal)
+        table.cell(info_table, 1, 1, "EJECUTAR", text_color=color.white, bgcolor=color.lime, text_size=size.normal)
+    else if sell_signal
+        table.cell(info_table, 0, 1, "🔻 SEÑAL VENTA", text_color=color.white, bgcolor=color.red, text_size=size.normal)
+        table.cell(info_table, 1, 1, "EJECUTAR", text_color=color.white, bgcolor=color.red, text_size=size.normal)
+    else if signal_detected
+        table.cell(info_table, 0, 1, "⚠️ VELA GIGANTE", text_color=color.white, bgcolor=color.orange, text_size=size.normal)
+        table.cell(info_table, 1, 1, "SIN DIRECCION", text_color=color.white, bgcolor=color.orange, text_size=size.normal)
+    else
+        table.cell(info_table, 0, 1, "Esperando...", text_color=color.black, bgcolor=color.gray, text_size=size.normal)
+        table.cell(info_table, 1, 1, "", text_color=color.black, bgcolor=color.gray)
+    
+    // Información de posición activa
+    if strategy.position_size != 0
+        table.cell(info_table, 0, 2, "Precio Entrada:", text_color=color.black, bgcolor=color.white)
+        table.cell(info_table, 1, 2, str.tostring(entry_price, "#.####"), text_color=color.black, bgcolor=color.white)
+        
+        table.cell(info_table, 0, 3, "Stop Loss:", text_color=color.black, bgcolor=color.white)
+        table.cell(info_table, 1, 3, str.tostring(stop_loss, "#.####"), text_color=color.black, bgcolor=color.white)
+        
+        table.cell(info_table, 0, 4, "Take Profit:", text_color=color.black, bgcolor=color.white)
+        table.cell(info_table, 1, 4, str.tostring(take_profit, "#.####"), text_color=color.black, bgcolor=color.white)
+        
+        // P&L actual
+        current_pnl = strategy.position_size > 0 ? (close - entry_price) : (entry_price - close)
+        pnl_color = current_pnl >= 0 ? color.green : color.red
+        table.cell(info_table, 0, 5, "P&L Actual:", text_color=color.black, bgcolor=color.white)
+        table.cell(info_table, 1, 5, str.tostring(current_pnl, "#.####"), text_color=color.white, bgcolor=pnl_color)
+    
+    // Información de la vela actual
+    table.cell(info_table, 0, 6, "Precio vs SMA200:", text_color=color.black, bgcolor=color.white)
+    direction_text = price_above_sma200 ? "ENCIMA" : "DEBAJO"
+    direction_color = price_above_sma200 ? color.new(color.red, 70) : color.new(color.lime, 70)
+    table.cell(info_table, 1, 6, direction_text, text_color=color.black, bgcolor=direction_color)
+    
+    table.cell(info_table, 0, 7, "Expansión OK:", text_color=color.black, bgcolor=color.white)
+    table.cell(info_table, 1, 7, expansion_condition ? "✓ SÍ" : "✗ NO", 
+               text_color=color.black, bgcolor=expansion_condition ? color.new(color.green, 70) : color.new(color.red, 70))
+    
+    table.cell(info_table, 0, 8, "Vela Gigante:", text_color=color.black, bgcolor=color.white)
+    table.cell(info_table, 1, 8, giant_candle_detected ? "✓ SÍ" : "✗ NO", 
+               text_color=color.black, bgcolor=giant_candle_detected ? color.new(color.green, 70) : color.new(color.red, 70))
+    
+    // Estadísticas de trading
+    table.cell(info_table, 0, 9, "Trades Ganados:", text_color=color.black, bgcolor=color.white)
+    table.cell(info_table, 1, 9, str.tostring(strategy.wintrades), text_color=color.black, bgcolor=color.white)
+    
+    table.cell(info_table, 0, 10, "Trades Perdidos:", text_color=color.black, bgcolor=color.white)
+    table.cell(info_table, 1, 10, str.tostring(strategy.losstrades), text_color=color.black, bgcolor=color.white)
+    
+    table.cell(info_table, 0, 11, "Win Rate:", text_color=color.black, bgcolor=color.white)
+    win_rate = strategy.closedtrades > 0 ? (strategy.wintrades / strategy.closedtrades) * 100 : 0
+    table.cell(info_table, 1, 11, str.tostring(math.round(win_rate, 1)) + "%", text_color=color.black, bgcolor=color.white)
+
+// === ALERTAS ===
+alertcondition(buy_signal, title="🚀 SEÑAL DE COMPRA", message="🚀 EJECUTAR COMPRA: Vela Gigante + Expansión + Precio debajo SMA200")
+alertcondition(sell_signal, title="🔻 SEÑAL DE VENTA", message="🔻 EJECUTAR VENTA: Vela Gigante + Expansión + Precio encima SMA200")
+
+// Alertas de gestión de riesgo
+alertcondition(strategy.position_size == 0 and strategy.position_size[1] != 0, title="⚠️ POSICIÓN CERRADA", message="⚠️ La posición ha sido cerrada por stop loss o take profit")
