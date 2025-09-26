@@ -1,0 +1,360 @@
+//@version=5
+strategy("Henry Estrategia Trading v7 - NY Session", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100, max_bars_back=5000)
+
+// === PARÁMETROS DE ENTRADA ===
+lookback_candles = input.int(6, title="Número de velas a comparar", minval=1, maxval=20)
+body_multiplier = input.float(1.5, title="Multiplicador del cuerpo (1.5 = 50% más grande)", minval=1.1, maxval=5.0, step=0.1)
+
+// Parámetros para expansión SMA
+sma20_length = input.int(20, title="Periodo SMA 20", minval=5, maxval=50)
+sma200_length = input.int(200, title="Periodo SMA 200", minval=50, maxval=500)
+sma_source = input.source(close, title="Fuente para SMAs (close, hlc3, ohlc4, etc.)")
+
+// Nuevos parámetros para detección de ciclos
+lookback_cycles = input.int(2, title="Ciclos a analizar para comparar", minval=1, maxval=5)
+expansion_threshold_percent = input.float(80.0, title="% del pico anterior para activar (80%)", minval=50.0, maxval=100.0, step=5.0)
+min_cycle_length = input.int(20, title="Longitud mínima de ciclo", minval=10, maxval=100)
+
+sma20_flatness_threshold = input.float(0.3, title="Umbral de planitud SMA20 (%)", minval=0.1, maxval=2.0, step=0.1)
+
+// === NUEVOS PARÁMETROS PARA GESTIÓN DE RIESGO ===
+use_trailing_stop = input.bool(true, title="Usar Trailing Stop", group="Gestión de Riesgo")
+risk_reward_ratio = input.float(2.0, title="Ratio Riesgo/Beneficio para Take Profit", minval=1.0, maxval=5.0, step=0.1, group="Gestión de Riesgo")
+
+// === PARÁMETROS DE SESIÓN NUEVA YORK ===
+max_trades_per_day = input.int(2, title="Máximo trades por día", minval=1, maxval=5, group="Sesión NY")
+ny_open_hour = input.int(16, title="Hora apertura NY (Madrid UTC+1)", minval=0, maxval=23, group="Sesión NY")
+ny_open_minute = input.int(30, title="Minuto inicio trading", minval=0, maxval=59, group="Sesión NY")
+ny_close_hour = input.int(17, title="Hora cierre forzoso (Madrid UTC+1)", minval=0, maxval=23, group="Sesión NY")
+ny_close_minute = input.int(0, title="Minuto cierre forzoso", minval=0, maxval=59, group="Sesión NY")
+
+// === FUNCIONES DE SESIÓN ===
+// Convertir hora de Madrid a UTC para comparación
+madrid_to_utc(hour_madrid, minute_madrid) =>
+    utc_hour = hour_madrid - 1  // Madrid es UTC+1
+    if utc_hour < 0
+        utc_hour := utc_hour + 24
+    [utc_hour, minute_madrid]
+
+// Obtener horas en UTC
+[ny_open_utc_hour, ny_open_utc_minute] = madrid_to_utc(ny_open_hour, ny_open_minute)
+[ny_close_utc_hour, ny_close_utc_minute] = madrid_to_utc(ny_close_hour, ny_close_minute)
+
+// Verificar si estamos en horario de trading
+is_in_trading_session() =>
+    current_hour = hour(time, "UTC")
+    current_minute = minute(time, "UTC")
+    
+    // Convertir a minutos para comparación fácil
+    current_time_minutes = current_hour * 60 + current_minute
+    start_time_minutes = ny_open_utc_hour * 60 + ny_open_utc_minute
+    end_time_minutes = ny_close_utc_hour * 60 + ny_close_utc_minute
+    
+    // Verificar si estamos dentro del rango
+    if start_time_minutes <= end_time_minutes
+        current_time_minutes >= start_time_minutes and current_time_minutes <= end_time_minutes
+    else  // Caso donde cruza medianoche
+        current_time_minutes >= start_time_minutes or current_time_minutes <= end_time_minutes
+
+// Verificar si es hora de cierre forzoso
+is_force_close_time() =>
+    current_hour = hour(time, "UTC")
+    current_minute = minute(time, "UTC")
+    current_hour == ny_close_utc_hour and current_minute >= ny_close_utc_minute
+
+// === GESTIÓN DE TRADES DIARIOS ===
+var int trades_today = 0
+var int last_trade_day = 0
+var bool first_trade_was_positive = false
+
+// Resetear contador diario - crear identificador único de día
+current_day = year(time) * 1000 + month(time) * 100 + dayofmonth(time)
+if current_day != last_trade_day
+    trades_today := 0
+    last_trade_day := current_day
+    first_trade_was_positive := false
+
+// === CÁLCULO DEL TAMAÑO DEL CUERPO ===
+current_body_size = math.abs(close - open)
+
+// === CÁLCULO DE SMAs Y EXPANSIÓN AVANZADA ===
+sma20 = ta.sma(sma_source, sma20_length)
+sma200 = ta.sma(sma_source, sma200_length)
+
+// Distancia entre SMAs
+sma_distance = math.abs(sma20 - sma200)
+current_price = close
+
+// === DETECCIÓN DE CRUCES Y CICLOS ===
+sma_cross_up = ta.crossover(sma20, sma200)
+sma_cross_down = ta.crossunder(sma20, sma200)
+any_cross = sma_cross_up or sma_cross_down
+
+// Variables para almacenar información del último ciclo
+var float last_cycle_max_distance = na
+var int last_cycle_length = na
+var int bars_since_last_cross = 0
+
+// Actualizar contador de barras desde último cruce
+if any_cross
+    if not na(last_cycle_max_distance) and bars_since_last_cross >= min_cycle_length
+        last_cycle_length := bars_since_last_cross
+    last_cycle_max_distance := sma_distance
+    bars_since_last_cross := 0
+else
+    bars_since_last_cross += 1
+    if sma_distance > last_cycle_max_distance or na(last_cycle_max_distance)
+        last_cycle_max_distance := sma_distance
+
+// === LÓGICA DE EXPANSIÓN BASADA EN CICLOS ===
+cycle_based_expansion = false
+
+if not na(last_cycle_max_distance) and not na(last_cycle_length) and bars_since_last_cross > min_cycle_length/2
+    distance_ratio = (sma_distance / last_cycle_max_distance) * 100
+    cycle_based_expansion := distance_ratio >= expansion_threshold_percent
+
+// Verificar si SMA20 está "plana"
+sma20_change = sma20 - sma20[5]
+sma20_slope_percent = math.abs(sma20_change / sma20) * 100
+is_sma20_flat = sma20_slope_percent <= sma20_flatness_threshold
+
+// Condición de expansión completa
+expansion_condition = cycle_based_expansion and is_sma20_flat
+
+// === COMPARACIÓN CON VELAS ANTERIORES ===
+is_giant_candle = true
+
+for i = 1 to lookback_candles
+    previous_body_size = math.abs(close[i] - open[i])
+    if current_body_size <= previous_body_size * body_multiplier
+        is_giant_candle := false
+        break
+
+// === IDENTIFICACIÓN DE TIPOS DE VELA ===
+body_size = math.abs(close - open)
+upper_shadow = high - math.max(close, open)
+lower_shadow = math.min(close, open) - low
+total_range = high - low
+
+is_bullish = close > open
+is_bearish = close < open
+
+// Clasificación del tipo de vela
+is_torpedo = body_size > (total_range * 0.7)
+is_hammer = lower_shadow > (body_size * 2) and upper_shadow < (body_size * 0.5) and is_bullish
+is_inverted_hammer = upper_shadow > (body_size * 2) and lower_shadow < (body_size * 0.5) and is_bearish
+
+// === SEÑALES DE TRADING CON RESTRICCIONES DE SESIÓN ===
+giant_candle_detected = is_giant_candle and current_body_size > 0
+signal_detected = giant_candle_detected and expansion_condition
+
+// Determinar dirección de la señal
+price_above_sma200 = close > sma200
+price_below_sma200 = close < sma200
+
+// Verificar condiciones de trading
+can_trade = is_in_trading_session() and not is_force_close_time()
+
+// Lógica de máximo 2 trades por día
+can_open_new_trade = false
+if trades_today == 0
+    can_open_new_trade := true  // Primer trade del día
+else if trades_today == 1 and not first_trade_was_positive
+    can_open_new_trade := true  // Segundo trade solo si el primero fue negativo
+else
+    can_open_new_trade := false // Ya se hicieron 2 trades o el primero fue positivo
+
+// Señales finales con todas las restricciones
+buy_signal = signal_detected and price_below_sma200 and can_trade and can_open_new_trade and strategy.position_size == 0
+sell_signal = signal_detected and price_above_sma200 and can_trade and can_open_new_trade and strategy.position_size == 0
+
+// === GESTIÓN DE RIESGO ===
+var float entry_price = na
+var float stop_loss = na
+var float take_profit = na
+var float initial_stop_distance = na
+
+// Función para calcular stop loss
+calculate_stop_loss(is_long_trade) =>
+    if is_long_trade
+        math.min(low, open)
+    else
+        math.max(high, open)
+
+// === LÓGICA DE ENTRADA ===
+if buy_signal
+    entry_price := close
+    stop_loss := calculate_stop_loss(true)
+    initial_stop_distance := entry_price - stop_loss
+    take_profit := entry_price + (initial_stop_distance * risk_reward_ratio)
+    
+    strategy.entry("Long", strategy.long)
+    trades_today := trades_today + 1
+    
+    if not use_trailing_stop
+        strategy.exit("Exit Long", "Long", stop=stop_loss, limit=take_profit)
+
+if sell_signal
+    entry_price := close
+    stop_loss := calculate_stop_loss(false)
+    initial_stop_distance := stop_loss - entry_price
+    take_profit := entry_price - (initial_stop_distance * risk_reward_ratio)
+    
+    strategy.entry("Short", strategy.short)
+    trades_today := trades_today + 1
+    
+    if not use_trailing_stop
+        strategy.exit("Exit Short", "Short", stop=stop_loss, limit=take_profit)
+
+// === TRAILING STOP LOGIC ===
+if use_trailing_stop and strategy.position_size != 0
+    if strategy.position_size > 0  // Posición larga
+        new_stop = close - initial_stop_distance
+        if na(stop_loss) or new_stop > stop_loss
+            stop_loss := new_stop
+        strategy.exit("Exit Long Trailing", "Long", stop=stop_loss, limit=take_profit)
+        
+    else  // Posición corta
+        new_stop = close + initial_stop_distance
+        if na(stop_loss) or new_stop < stop_loss
+            stop_loss := new_stop
+        strategy.exit("Exit Short Trailing", "Short", stop=stop_loss, limit=take_profit)
+
+// === CIERRE FORZOSO AL FINAL DE SESIÓN ===
+if strategy.position_size != 0 and is_force_close_time()
+    strategy.close_all(comment="Cierre forzoso fin sesión")
+
+// === TRACKING DE RESULTADO DEL PRIMER TRADE ===
+// Detectar cuando se cierra una posición para trackear si fue positiva
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    // Se cerró una posición
+    trade_was_positive = strategy.netprofit > strategy.netprofit[1]
+    if trades_today == 1  // Era el primer trade del día
+        first_trade_was_positive := trade_was_positive
+
+// === VISUALIZACIÓN ===
+// Dibujar las SMAs
+plot(sma20, color=color.blue, linewidth=2, title="SMA 20")
+plot(sma200, color=color.red, linewidth=2, title="SMA 200")
+
+// Marcar cruces de SMAs
+plotshape(sma_cross_up, style=shape.triangleup, location=location.belowbar, 
+          color=color.green, size=size.small, title="Cruce Alcista SMAs")
+plotshape(sma_cross_down, style=shape.triangledown, location=location.abovebar, 
+          color=color.red, size=size.small, title="Cruce Bajista SMAs")
+
+// Colorear el fondo cuando hay expansión
+bgcolor(cycle_based_expansion ? color.new(color.yellow, 85) : na, title="Zona de Expansión")
+bgcolor(expansion_condition ? color.new(color.green, 90) : na, title="Expansión + SMA Plana")
+
+// Colorear el fondo durante sesión de trading
+bgcolor(is_in_trading_session() ? color.new(color.blue, 95) : na, title="Sesión NY Activa")
+
+// Marcar señales de trading
+plotshape(buy_signal, style=shape.triangleup, location=location.belowbar, 
+          color=color.lime, size=size.large, title="🚀 SEÑAL COMPRA NY")
+plotshape(sell_signal, style=shape.triangledown, location=location.abovebar, 
+          color=color.red, size=size.large, title="🔻 SEÑAL VENTA NY")
+
+// Dibujar niveles de stop loss y take profit
+plot(strategy.position_size != 0 ? stop_loss : na, color=color.red, linewidth=2, title="Stop Loss", style=plot.style_linebr)
+plot(strategy.position_size != 0 ? take_profit : na, color=color.green, linewidth=2, title="Take Profit", style=plot.style_linebr)
+
+// === INFORMACIÓN EN TIEMPO REAL ===
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 15, bgcolor=color.white, border_width=1)
+    
+    // Header con estado de la estrategia
+    position_text = strategy.position_size > 0 ? "LONG ACTIVO" : strategy.position_size < 0 ? "SHORT ACTIVO" : "SIN POSICIÓN"
+    header_color = strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray
+    
+    table.cell(info_table, 0, 0, "Estado:", text_color=color.white, bgcolor=header_color, text_size=size.normal)
+    table.cell(info_table, 1, 0, position_text, text_color=color.white, bgcolor=header_color, text_size=size.normal)
+    
+    // Información de sesión NY
+    session_status = is_in_trading_session() ? "ACTIVA" : "INACTIVA"
+    session_color = is_in_trading_session() ? color.green : color.red
+    table.cell(info_table, 0, 1, "Sesión NY:", text_color=color.black, bgcolor=color.white)
+    table.cell(info_table, 1, 1, session_status, text_color=color.white, bgcolor=session_color)
+    
+    // Información de trades diarios
+    table.cell(info_table, 0, 2, "Trades hoy:", text_color=color.black, bgcolor=color.white)
+    trades_color = trades_today >= max_trades_per_day ? color.red : color.green
+    table.cell(info_table, 1, 2, str.tostring(trades_today) + "/" + str.tostring(max_trades_per_day), 
+               text_color=color.white, bgcolor=trades_color)
+    
+    // Estado del primer trade
+    table.cell(info_table, 0, 3, "1er trade positivo:", text_color=color.black, bgcolor=color.white)
+    first_trade_text = trades_today == 0 ? "N/A" : first_trade_was_positive ? "SÍ" : "NO"
+    first_trade_color = trades_today == 0 ? color.gray : first_trade_was_positive ? color.green : color.red
+    table.cell(info_table, 1, 3, first_trade_text, text_color=color.white, bgcolor=first_trade_color)
+    
+    // Información de señales
+    if buy_signal
+        table.cell(info_table, 0, 4, "🚀 SEÑAL COMPRA", text_color=color.white, bgcolor=color.lime, text_size=size.normal)
+        table.cell(info_table, 1, 4, "EJECUTAR", text_color=color.white, bgcolor=color.lime, text_size=size.normal)
+    else if sell_signal
+        table.cell(info_table, 0, 4, "🔻 SEÑAL VENTA", text_color=color.white, bgcolor=color.red, text_size=size.normal)
+        table.cell(info_table, 1, 4, "EJECUTAR", text_color=color.white, bgcolor=color.red, text_size=size.normal)
+    else if signal_detected and not can_trade
+        table.cell(info_table, 0, 4, "⏰ FUERA DE SESIÓN", text_color=color.white, bgcolor=color.orange, text_size=size.normal)
+        table.cell(info_table, 1, 4, "ESPERANDO", text_color=color.white, bgcolor=color.orange, text_size=size.normal)
+    else if signal_detected and not can_open_new_trade
+        table.cell(info_table, 0, 4, "⚠️ MAX TRADES", text_color=color.white, bgcolor=color.orange, text_size=size.normal)
+        table.cell(info_table, 1, 4, "BLOQUEADO", text_color=color.white, bgcolor=color.orange, text_size=size.normal)
+    else
+        table.cell(info_table, 0, 4, "Esperando...", text_color=color.black, bgcolor=color.gray, text_size=size.normal)
+        table.cell(info_table, 1, 4, "", text_color=color.black, bgcolor=color.gray)
+    
+    // Información de posición activa
+    if strategy.position_size != 0
+        table.cell(info_table, 0, 5, "Precio Entrada:", text_color=color.black, bgcolor=color.white)
+        table.cell(info_table, 1, 5, str.tostring(entry_price, "#.####"), text_color=color.black, bgcolor=color.white)
+        
+        table.cell(info_table, 0, 6, "Stop Loss:", text_color=color.black, bgcolor=color.white)
+        table.cell(info_table, 1, 6, str.tostring(stop_loss, "#.####"), text_color=color.black, bgcolor=color.white)
+        
+        table.cell(info_table, 0, 7, "Take Profit:", text_color=color.black, bgcolor=color.white)
+        table.cell(info_table, 1, 7, str.tostring(take_profit, "#.####"), text_color=color.black, bgcolor=color.white)
+        
+        // P&L actual
+        current_pnl = strategy.position_size > 0 ? (close - entry_price) : (entry_price - close)
+        pnl_color = current_pnl >= 0 ? color.green : color.red
+        table.cell(info_table, 0, 8, "P&L Actual:", text_color=color.black, bgcolor=color.white)
+        table.cell(info_table, 1, 8, str.tostring(current_pnl, "#.####"), text_color=color.white, bgcolor=pnl_color)
+    
+    // Horarios de sesión
+    table.cell(info_table, 0, 9, "Inicio trading:", text_color=color.black, bgcolor=color.white)
+    table.cell(info_table, 1, 9, str.tostring(ny_open_hour) + ":" + str.tostring(ny_open_minute, "00") + " Madrid", text_color=color.black, bgcolor=color.white)
+    
+    table.cell(info_table, 0, 10, "Cierre forzoso:", text_color=color.black, bgcolor=color.white)
+    table.cell(info_table, 1, 10, str.tostring(ny_close_hour) + ":" + str.tostring(ny_close_minute, "00") + " Madrid", text_color=color.black, bgcolor=color.white)
+    
+    // Información técnica
+    table.cell(info_table, 0, 11, "Precio vs SMA200:", text_color=color.black, bgcolor=color.white)
+    direction_text = price_above_sma200 ? "ENCIMA" : "DEBAJO"
+    direction_color = price_above_sma200 ? color.new(color.red, 70) : color.new(color.lime, 70)
+    table.cell(info_table, 1, 11, direction_text, text_color=color.black, bgcolor=direction_color)
+    
+    table.cell(info_table, 0, 12, "Expansión OK:", text_color=color.black, bgcolor=color.white)
+    table.cell(info_table, 1, 12, expansion_condition ? "✓ SÍ" : "✗ NO", 
+               text_color=color.black, bgcolor=expansion_condition ? color.new(color.green, 70) : color.new(color.red, 70))
+    
+    table.cell(info_table, 0, 13, "Vela Gigante:", text_color=color.black, bgcolor=color.white)
+    table.cell(info_table, 1, 13, giant_candle_detected ? "✓ SÍ" : "✗ NO", 
+               text_color=color.black, bgcolor=giant_candle_detected ? color.new(color.green, 70) : color.new(color.red, 70))
+    
+    // Estadísticas de trading
+    table.cell(info_table, 0, 14, "Win Rate:", text_color=color.black, bgcolor=color.white)
+    win_rate = strategy.closedtrades > 0 ? (strategy.wintrades / strategy.closedtrades) * 100 : 0
+    table.cell(info_table, 1, 14, str.tostring(math.round(win_rate, 1)) + "%", text_color=color.black, bgcolor=color.white)
+
+// === ALERTAS ===
+alertcondition(buy_signal, title="🚀 SEÑAL COMPRA NY", message="🚀 COMPRA: Vela Gigante + Expansión + Sesión NY + Trades disponibles")
+alertcondition(sell_signal, title="🔻 SEÑAL VENTA NY", message="🔻 VENTA: Vela Gigante + Expansión + Sesión NY + Trades disponibles")
+
+// Alertas de gestión
+alertcondition(strategy.position_size == 0 and strategy.position_size[1] != 0, title="⚠️ POSICIÓN CERRADA", message="⚠️ Posición cerrada - Verificar resultado en el panel de estrategia")
+
+// Alerta de cierre forzoso
+alertcondition(is_force_close_time() and strategy.position_size != 0, title="⏰ CIERRE FORZOSO", message="⏰ Cierre forzoso - Fin de sesión NY")
