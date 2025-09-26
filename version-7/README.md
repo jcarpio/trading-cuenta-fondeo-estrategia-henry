@@ -257,7 +257,7 @@ Trailing stop: Activado
 ## 📊 Resultados del Backtesting v7 (5 minutos)
 
 ### Overview - Rendimiento General v7
-![Gráfico Overview v7](https://imgur.com/v7-overview.png)
+![Gráfico Overview v7](overview.png)
 
 **Métricas Destacadas v7:**
 - **Total P&L**: +$7,885.09 USD (**+0.79%**)
@@ -276,7 +276,7 @@ La curva azul muestra un rendimiento fundamentalmente diferente a la v6:
 La línea verde (buy & hold: +121.19%) supera la estrategia activa (+0.79%), pero la v7 ofrece **control de riesgo superior**.
 
 ### Performance - Métricas Detalladas v7
-![Gráfico Performance v7](https://imgur.com/v7-performance.png)
+![Gráfico Performance v7](performance.png)
 
 **Breakdown por Tipo de Operación v7:**
 
@@ -296,7 +296,7 @@ La línea verde (buy & hold: +121.19%) supera la estrategia activa (+0.79%), per
 - **Commission Paid**: $0 USD (ventaja mantenida)
 
 ### Trades Analysis - Análisis de Operaciones v7
-![Gráfico Trades Analysis v7](https://imgur.com/v7-trades.png)
+![Gráfico Trades Analysis v7](trades1.png)
 
 **Distribución de Operaciones v7:**
 - **Total**: 253 trades (**98% menos que v6**)
@@ -321,7 +321,7 @@ La línea verde (buy & hold: +121.19%) supera la estrategia activa (+0.79%), per
 - **Consistencia**: Todas las duraciones son idénticas (control estricto)
 
 ### Risk/Performance Ratios - Ratios de Riesgo v7
-![Gráfico Risk Performance v7](https://imgur.com/v7-risk.png)
+![Gráfico Risk Performance v7](risk.png)
 
 **Ratios de Rendimiento Ajustado al Riesgo v7:**
 - **Sharpe Ratio**: -1.06 (negativo, indica volatilidad alta relativa al retorno)
