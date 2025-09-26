@@ -2,7 +2,7 @@
 
 ## Descripción General
 
-La **Henry Estrategia Trading v7** es una evolución especializada del sistema v4, diseñada específicamente para operar durante la apertura de la sesión de Nueva York con reglas estrictas de gestión de riesgo y frecuencia de trading.
+La **Henry Estrategia Trading v7** es una evolución especializada del sistema v6, diseñada específicamente para operar durante la apertura de la sesión de Nueva York con reglas estrictas de gestión de riesgo y frecuencia de trading.
 
 ## 🎯 Filosofía de la Versión 7
 
@@ -29,7 +29,7 @@ ny_close_hour = 17              // Cierre forzoso (Madrid)
 ny_close_minute = 0             // Minuto de cierre
 ```
 
-### Parámetros Heredados de v4
+### Parámetros Heredados de v6
 - Detección de velas gigantes (multiplicador 1.5x)
 - Expansión SMA 20/200 (80% del pico anterior)
 - Planitud SMA20 (0.3% threshold)
@@ -157,7 +157,7 @@ TRADE 2 (solo si TRADE 1 negativo):
 
 ## 📈 Ventajas vs Versión 4
 
-| Aspecto | v4 | v7 |
+| Aspecto | v6 | v7 |
 |---------|----|----|
 | **Frecuencia** | Alta (24/7) | Controlada (2 max/día) |
 | **Horario** | Continuo | 30 min específicos |
@@ -237,9 +237,9 @@ Trailing stop: Activado
 - **Días con 2 trades**: Solo si primer trade es negativo
 
 ### Rendimiento Esperado
-- **Win rate**: Objetivo 40-50% (similar a v4)
+- **Win rate**: Objetivo 40-50% (similar a v6)
 - **Risk/reward**: 2:1 compensa win rate moderado
-- **Drawdown**: Mejor controlado que v4 por limitación diaria
+- **Drawdown**: Mejor controlado que v6 por limitación diaria
 - **Consistencia**: Mayor debido a reglas estrictas
 
 ## 🔧 Troubleshooting
@@ -254,18 +254,169 @@ Trailing stop: Activado
 - **Filtro de noticias**: Parar en días de NFP o FOMC
 - **Análisis seasonal**: Mejor rendimiento en ciertos meses
 
-## 📝 Conclusiones
+## 📊 Resultados del Backtesting v7 (5 minutos)
 
-La **Henry Estrategia Trading v7** representa una evolución hacia el **trading disciplinado y controlado**. Mediante la implementación de restricciones temporales y de frecuencia, busca:
+### Overview - Rendimiento General v7
+![Gráfico Overview v7](https://imgur.com/v7-overview.png)
 
-- **Maximizar el aprovechamiento** de la volatilidad de apertura NY
-- **Minimizar el riesgo** a través de reglas estrictas
-- **Mejorar la disciplina** del trader mediante automatización
-- **Simplificar la operativa** a 30 minutos diarios específicos
+**Métricas Destacadas v7:**
+- **Total P&L**: +$7,885.09 USD (**+0.79%**)
+- **Max Drawdown**: $22,845.30 USD (**2.25%**)
+- **Total Trades**: 253 operaciones (vs 11,186 en v6)
+- **Profitable Trades**: **43.08%** (109/253)
+- **Profit Factor**: **1.088** (superior a v6: 1.04)
 
-Esta versión es ideal para traders que buscan un enfoque **sistemático, controlado y menos demandante en tiempo**, manteniendo la efectividad técnica de la estrategia original.
+**Análisis de la Curva de Equity v7:**
+La curva azul muestra un rendimiento fundamentalmente diferente a la v6:
+- **Crecimiento controlado** (2017-2020): Progresión steady sin volatilidad extrema
+- **Estabilidad durante crisis** (2020): El drawdown es mínimo comparado con v6
+- **Consolidación sostenida** (2021-2023): Crecimiento lateral controlado
+- **Aceleración final** (2024-2025): Impulso hacia $1.2M con menor volatilidad
 
----
+La línea verde (buy & hold: +121.19%) supera la estrategia activa (+0.79%), pero la v7 ofrece **control de riesgo superior**.
 
-*Versión 7 desarrollada por Henry Trading Systems*  
-*Especializada para Sesión Nueva York - Septiembre 2025*
+### Performance - Métricas Detalladas v7
+![Gráfico Performance v7](https://imgur.com/v7-performance.png)
+
+**Breakdown por Tipo de Operación v7:**
+
+**LONG (Compras) - Menor Rentabilidad:**
+- Net Profit: +$1,876.32 USD (+0.19%)
+- Gross Profit: $53,048.85 USD (5.30%)
+- Gross Loss: $51,172.53 USD (5.12%)
+
+**SHORT (Ventas) - Mejor Rendimiento:**
+- Net Profit: +$6,008.77 USD (+0.60%)
+- Gross Loss: $38,616.71 USD (3.86%)
+- **Análisis**: Las ventas son 3.2x más rentables que las compras en v7
+
+**Comparación v6 vs v7 - Performance:**
+- **Max Equity Run-up**: $18,698.20 USD (1.84%) vs v6: $333,445.89 USD (27.08%)
+- **Max Drawdown**: 2.25% vs v6: 10.51% (**78% menor riesgo**)
+- **Commission Paid**: $0 USD (ventaja mantenida)
+
+### Trades Analysis - Análisis de Operaciones v7
+![Gráfico Trades Analysis v7](https://imgur.com/v7-trades.png)
+
+**Distribución de Operaciones v7:**
+- **Total**: 253 trades (**98% menos que v6**)
+  - **Long**: 127 trades (50.2%)
+  - **Short**: 126 trades (49.8%)
+
+**Análisis de Rentabilidad v7:**
+- **Overall Win Rate**: **43.08%** (vs v6: 41.61%) - **Mejora del 1.47%**
+- **Long Win Rate**: **43.31%** 
+- **Short Win Rate**: **42.86%**
+
+**Métricas de P&L Detalladas v7:**
+- **Avg P&L General**: $31.17 USD (vs v6: $15.37) - **103% mayor**
+- **Avg Winning Trade**: $896.09 USD (vs v6: $958.18)
+- **Avg Losing Trade**: $632.32 USD (vs v6: $679.51)
+- **Ratio Win/Loss**: **1.417** (vs v6: 1.41) - **Ligeramente superior**
+
+**Eficiencia Temporal v7:**
+- **Avg Bars in Trades**: 3 barras (15 minutos vs v6: 25 minutos)
+- **Winning Trades Duration**: 3 barras
+- **Losing Trades Duration**: 3 barras
+- **Consistencia**: Todas las duraciones son idénticas (control estricto)
+
+### Risk/Performance Ratios - Ratios de Riesgo v7
+![Gráfico Risk Performance v7](https://imgur.com/v7-risk.png)
+
+**Ratios de Rendimiento Ajustado al Riesgo v7:**
+- **Sharpe Ratio**: -1.06 (negativo, indica volatilidad alta relativa al retorno)
+- **Sortino Ratio**: -0.755 (mejor que Sharpe, pero aún negativo)
+- **Profit Factor**: **1.088** (vs v6: 1.04) - **Mejora del 4.6%**
+  - Long: 1.037 (inferior a v6)
+  - Short: 1.156 (superior a v6)
+- **Margin Calls**: 0 - Gestión de riesgo perfecta
+
+**Interpretación de Ratios v7:**
+Los ratios Sharpe y Sortino negativos indican:
+1. **Retorno inferior al benchmark libre de riesgo**
+2. **Alta volatilidad relativa** para el retorno obtenido
+3. **Necesidad de optimización** en la selección de trades
+
+## 🔍 Comparación Detallada v6 vs v7
+
+| Métrica | v6 (24/7) | v7 (NY Session) | Diferencia |
+|---------|-----------|-----------------|------------|
+| **Total P&L** | +$172,628.55 (+17.25%) | +$7,885.09 (+0.79%) | **-95.4%** |
+| **Max Drawdown** | 10.51% | 2.25% | **-78.6%** ✅ |
+| **Total Trades** | 11,186 | 253 | **-97.7%** |
+| **Win Rate** | 41.61% | 43.08% | **+1.47%** ✅ |
+| **Profit Factor** | 1.04 | 1.088 | **+4.6%** ✅ |
+| **Avg P&L per Trade** | $15.37 | $31.17 | **+103%** ✅ |
+| **Avg Trade Duration** | 5 barras (25 min) | 3 barras (15 min) | **-40%** ✅ |
+| **Sharpe Ratio** | 0.001 | -1.06 | **Deterioro** ❌ |
+
+## 📈 Análisis de Resultados v7
+
+### ✅ Fortalezas de la v7
+1. **Control de Riesgo Superior**: Drawdown 78% menor
+2. **Eficiencia por Trade**: Doble ganancia promedio por operación
+3. **Win Rate Mejorado**: 1.47% más trades ganadores
+4. **Gestión Temporal**: Trades 40% más rápidos
+5. **Profit Factor Superior**: Mejor relación ganancia/pérdida
+6. **Simplicidad Operativa**: Solo 30 minutos de atención diaria
+7. **Sin Overnight Risk**: Cierre forzoso elimina gaps
+
+### ⚠️ Debilidades de la v7
+1. **Retorno Absoluto Menor**: 95% menos ganancia total
+2. **Ratios Sharpe/Sortino Negativos**: Rendimiento vs riesgo subóptimo
+3. **Menor Frecuencia**: 97% menos oportunidades de trading
+4. **Dependencia Horaria**: Solo funciona en apertura NY
+5. **Underperformance vs Buy & Hold**: 121% vs 0.79%
+
+### 🎯 Perfil de Trader Ideal para v7
+
+**Recomendado para:**
+- Traders con **tiempo limitado** (solo 30 min/día)
+- Perfiles **conservadores** que priorizan control de riesgo
+- Traders que buscan **complementar** otras estrategias
+- Personas con **trabajo a tiempo completo**
+- Traders **principiantes** que necesitan disciplina
+
+**NO recomendado para:**
+- Traders que buscan **retornos altos** absolutos
+- Perfiles **agresivos** que toleran más riesgo
+- Traders de **tiempo completo** que pueden monitorear 24/7
+- Estrategias como **única fuente** de ingresos trading
+
+## 💡 Optimizaciones Sugeridas para v7
+
+### Mejoras Técnicas
+1. **Filtro de Volatilidad**: Solo operar días con ATR > promedio
+2. **Filtro de Spread**: Evitar trades con spread alto
+3. **Ajuste de Horario**: Testear 16:00-16:30 vs 16:30-17:00
+4. **Gestión Dinámica**: Stop loss adaptativo según volatilidad
+
+### Mejoras de Gestión
+1. **Incrementar a 3 trades/día** en días de alta volatilidad
+2. **Filtro de días**: Evitar viernes o días de news
+3. **Multi-timeframe**: Confirmar señales en 15min
+4. **Portfolio approach**: Combinar con v6 en diferentes cuentas
+
+## 🏆 Conclusiones v7
+
+La **Henry Estrategia Trading v7** cumple exitosamente su objetivo de **trading disciplinado y controlado**:
+
+**Logros Clave:**
+- ✅ **Dramática reducción de riesgo** (drawdown -78%)
+- ✅ **Mejora en eficiencia** por operación (+103% avg P&L)
+- ✅ **Win rate superior** (+1.47%)
+- ✅ **Gestión temporal** optimizada (15 min por trade)
+
+**Trade-offs Aceptables:**
+- ⚖️ **Menor retorno absoluto** a cambio de **menor riesgo**
+- ⚖️ **Menos oportunidades** pero **mayor calidad** por trade
+- ⚖️ **Dependencia horaria** a cambio de **predictibilidad**
+
+**Recomendación Final:**
+La v7 es **excelente como estrategia complementaria** o para traders que priorizan **preservación de capital** sobre **crecimiento agresivo**. Su fortaleza radica en el **control de riesgo** y la **simplicidad operativa**, no en maximizar retornos absolutos.
+
+Para **máximo aprovechamiento**, considerar:
+- Usar v7 como **base conservadora** del portfolio
+- Combinar con **estrategias más agresivas** en otros horarios
+- **Optimizar parámetros** según instrumento específico
+- **Escalar posición** gradualmente según rendimiento
