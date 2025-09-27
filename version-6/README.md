@@ -2,7 +2,7 @@
 
 ## Descripción General
 
-La **Henry Estrategia Trading v4** es un sistema de trading automatizado diseñado para TradingView que detecta oportunidades de entrada basadas en la expansión de medias móviles y velas gigantes como confirmación de señal.
+La **Henry Estrategia Trading v6** es un sistema de trading automatizado diseñado para TradingView que detecta oportunidades de entrada basadas en la expansión de medias móviles y velas gigantes como confirmación de señal.
 
 ## 🎯 Concepto de la Estrategia
 
@@ -191,7 +191,7 @@ Los ratios Sharpe y Sortino bajos (0.001-0.002) no indican mal rendimiento, sino
 
 ## 📝 Conclusiones
 
-La **Henry Estrategia Trading v4** demuestra ser un sistema robusto con **8+ años de rentabilidad consistente**. Con un retorno del **17.25%** y un drawdown controlado del **10.51%**, ofrece un balance atractivo entre rentabilidad y riesgo.
+La **Henry Estrategia Trading v6** demuestra ser un sistema robusto con **8+ años de rentabilidad consistente**. Con un retorno del **17.25%** y un drawdown controlado del **10.51%**, ofrece un balance atractivo entre rentabilidad y riesgo.
 
 **Puntos Clave:**
 - ✅ **Rentabilidad probada** en timeframe de 5 minutos
